@@ -1,0 +1,24 @@
+# Fly.io configuration for RhinoBoy Dashboard
+# Deploy with: fly launch && fly deploy
+
+app = "rhinoboy-dashboard"
+primary_region = "ewr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
