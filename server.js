@@ -271,13 +271,18 @@ app.post('/api/tools/usage/track', (req, res) => {
 
 // In production, serve index.html for all non-API routes (SPA fallback)
 if (NODE_ENV === 'production') {
-  app.get('/{*splat}', (req, res) => {
-    res.sendFile(join(__dirname, 'dist', 'index.html'));
+  const indexHtml = readFileSync(join(__dirname, 'dist', 'index.html'), 'utf-8');
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api/')) {
+      res.type('html').send(indexHtml);
+    } else {
+      next();
+    }
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`🦏 RhinoBoy Dashboard running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🦏 RhinoBoy Dashboard running on http://0.0.0.0:${PORT}`);
   console.log(`   Environment: ${NODE_ENV}`);
   console.log(`   Workspace: ${WORKSPACE}`);
   console.log(`   Gateway: ${GATEWAY_URL}`);

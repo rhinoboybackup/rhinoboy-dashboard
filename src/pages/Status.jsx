@@ -3,13 +3,13 @@ import { Activity, Cpu, HardDrive, Clock, Zap, RefreshCw, CheckCircle, XCircle, 
 
 function StatusCard({ icon: Icon, title, value, subtitle, status }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
+    <div className="glass rounded-2xl p-5 md:p-6">
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${
-            status === 'good' ? 'bg-green-100' :
-            status === 'warning' ? 'bg-yellow-100' :
-            status === 'error' ? 'bg-red-100' : 'bg-gray-100'
+          <div className={`p-2 rounded-xl ${
+            status === 'good' ? 'bg-green-100/80' :
+            status === 'warning' ? 'bg-yellow-100/80' :
+            status === 'error' ? 'bg-red-100/80' : 'bg-gray-100/80'
           }`}>
             <Icon size={20} className={
               status === 'good' ? 'text-green-600' :
@@ -51,13 +51,11 @@ function Status() {
     setError(null)
     
     try {
-      // 1. Check dashboard API health
       const apiCheck = await fetch('/api/status')
       if (apiCheck.ok) {
         setServices(s => ({ ...s, api: { ...s.api, status: 'healthy' } }))
       }
       
-      // 2. Get session_status from gateway
       const statusRes = await fetch('/api/gateway/tools/invoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -66,15 +64,13 @@ function Status() {
       
       if (statusRes.ok) {
         const data = await statusRes.json()
-        const text = data?.statusText || data?.details?.statusText || 
-                     data?.result?.details?.statusText || ''
+        const text = data?.statusText || data?.details?.statusText || data?.result?.details?.statusText || ''
         setStatusText(text)
         setServices(s => ({ ...s, gateway: { ...s.gateway, status: 'healthy' } }))
       } else {
         throw new Error('Gateway not responding')
       }
       
-      // 3. Get session list for metrics
       const sessionsRes = await fetch('/api/gateway/tools/invoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -84,23 +80,16 @@ function Status() {
       if (sessionsRes.ok) {
         const sessData = await sessionsRes.json()
         const mainSession = sessData?.sessions?.[0] || sessData?.result?.details?.sessions?.[0]
-        if (mainSession) {
-          setSessionData(mainSession)
-        }
+        if (mainSession) setSessionData(mainSession)
       }
       
-      // 4. Test file system
       const filesRes = await fetch('/api/files?path=')
       if (filesRes.ok) {
         setServices(s => ({ ...s, files: { ...s.files, status: 'healthy' } }))
       }
-      
     } catch (err) {
       setError(err.message)
-      setServices(s => ({ 
-        ...s, 
-        gateway: { ...s.gateway, status: 'unhealthy' }
-      }))
+      setServices(s => ({ ...s, gateway: { ...s.gateway, status: 'unhealthy' } }))
     } finally {
       setLoading(false)
     }
@@ -112,48 +101,26 @@ function Status() {
     return () => clearInterval(interval)
   }, [])
 
-  // Parse status text for key info
   const parseStatusText = (text) => {
     const lines = text.split('\n')
     const info = {}
-    
     for (const line of lines) {
       if (line.includes('OpenClaw')) {
         const match = line.match(/OpenClaw\s+([\d.]+(?:-\d+)?)\s*\(([^)]+)\)/)
-        if (match) {
-          info.version = match[1]
-          info.commit = match[2]
-        }
+        if (match) { info.version = match[1]; info.commit = match[2] }
       }
-      if (line.includes('Time:')) {
-        info.time = line.split('Time:')[1]?.trim()
-      }
-      if (line.includes('Model:')) {
-        const match = line.match(/Model:\s*([^\s·]+)/)
-        if (match) info.model = match[1]
-      }
+      if (line.includes('Time:')) info.time = line.split('Time:')[1]?.trim()
+      if (line.includes('Model:')) { const m = line.match(/Model:\s*([^\s·]+)/); if (m) info.model = m[1] }
       if (line.includes('Tokens:')) {
-        const match = line.match(/(\d+)\s*in\s*\/\s*(\d+)\s*out/)
-        if (match) {
-          info.tokensIn = parseInt(match[1])
-          info.tokensOut = parseInt(match[2])
-        }
+        const m = line.match(/(\d+)\s*in\s*\/\s*(\d+)\s*out/)
+        if (m) { info.tokensIn = parseInt(m[1]); info.tokensOut = parseInt(m[2]) }
       }
       if (line.includes('Context:')) {
-        const match = line.match(/(\d+)k\/(\d+)k\s*\((\d+)%\)/)
-        if (match) {
-          info.contextUsed = parseInt(match[1]) * 1000
-          info.contextMax = parseInt(match[2]) * 1000
-          info.contextPercent = parseInt(match[3])
-        }
+        const m = line.match(/(\d+)k\/(\d+)k\s*\((\d+)%\)/)
+        if (m) { info.contextUsed = parseInt(m[1]) * 1000; info.contextMax = parseInt(m[2]) * 1000; info.contextPercent = parseInt(m[3]) }
       }
-      if (line.includes('Session:')) {
-        const match = line.match(/Session:\s*([^\s•]+)/)
-        if (match) info.session = match[1]
-      }
-      if (line.includes('Runtime:')) {
-        info.runtime = line.split('Runtime:')[1]?.trim()
-      }
+      if (line.includes('Session:')) { const m = line.match(/Session:\s*([^\s•]+)/); if (m) info.session = m[1] }
+      if (line.includes('Runtime:')) info.runtime = line.split('Runtime:')[1]?.trim()
     }
     return info
   }
@@ -169,16 +136,14 @@ function Status() {
 
   const formatTime = (ts) => {
     if (!ts) return '—'
-    const d = new Date(ts)
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
   return (
-    <div className="p-6">
-      {/* Header */}
+    <div className="p-4 md:p-6 lg:p-8 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">System Status</h1>
+          <h1 className="text-xl md:text-2xl font-semibold text-gray-900">System Status</h1>
           <p className="text-gray-500 text-sm mt-1">
             {parsedStatus.version ? `OpenClaw ${parsedStatus.version}` : 'OpenClaw Gateway'}
             {parsedStatus.commit && <span className="text-gray-400"> ({parsedStatus.commit})</span>}
@@ -186,16 +151,15 @@ function Status() {
         </div>
         <button
           onClick={fetchStatus}
-          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-white/50 rounded-xl transition-colors min-h-[44px]"
         >
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          Refresh
+          <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
 
-      {/* Error */}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg flex items-center gap-3">
+        <div className="mb-6 p-4 bg-red-50/80 text-red-700 rounded-2xl flex items-center gap-3 border border-red-100/50">
           <XCircle size={20} />
           <div>
             <p className="font-medium">Connection Error</p>
@@ -204,83 +168,48 @@ function Status() {
         </div>
       )}
 
-      {/* Status Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatusCard
-          icon={Activity}
-          title="Gateway Status"
-          value={services.gateway.status === 'healthy' ? 'Running' : 'Error'}
-          status={services.gateway.status === 'healthy' ? 'good' : 'error'}
-        />
-        <StatusCard
-          icon={Cpu}
-          title="Model"
-          value={sessionData?.model || parsedStatus.model || 'Unknown'}
-          status="good"
-        />
-        <StatusCard
-          icon={Database}
-          title="Context Used"
-          value={parsedStatus.contextPercent ? `${parsedStatus.contextPercent}%` : '—'}
-          subtitle={parsedStatus.contextUsed ? `${formatTokens(parsedStatus.contextUsed)} / ${formatTokens(parsedStatus.contextMax)}` : undefined}
-          status={parsedStatus.contextPercent > 90 ? 'warning' : 'good'}
-        />
-        <StatusCard
-          icon={Zap}
-          title="Total Tokens"
-          value={formatTokens(sessionData?.totalTokens)}
-          subtitle={sessionData?.updatedAt ? `Updated ${formatTime(sessionData.updatedAt)}` : undefined}
-          status="good"
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+        <StatusCard icon={Activity} title="Gateway Status" value={services.gateway.status === 'healthy' ? 'Running' : 'Error'} status={services.gateway.status === 'healthy' ? 'good' : 'error'} />
+        <StatusCard icon={Cpu} title="Model" value={sessionData?.model || parsedStatus.model || 'Unknown'} status="good" />
+        <StatusCard icon={Database} title="Context Used" value={parsedStatus.contextPercent ? `${parsedStatus.contextPercent}%` : '—'} subtitle={parsedStatus.contextUsed ? `${formatTokens(parsedStatus.contextUsed)} / ${formatTokens(parsedStatus.contextMax)}` : undefined} status={parsedStatus.contextPercent > 90 ? 'warning' : 'good'} />
+        <StatusCard icon={Zap} title="Total Tokens" value={formatTokens(sessionData?.totalTokens)} subtitle={sessionData?.updatedAt ? `Updated ${formatTime(sessionData.updatedAt)}` : undefined} status="good" />
       </div>
 
-      {/* Status Text Card */}
       {statusText && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+        <div className="glass rounded-2xl overflow-hidden mb-6">
+          <div className="px-5 md:px-6 py-4 border-b border-white/20 flex items-center gap-2">
             <Server size={18} className="text-gray-400" />
             <h2 className="font-semibold text-gray-900">Live Status</h2>
           </div>
-          <div className="p-6">
-            <pre className="text-sm text-gray-700 font-mono whitespace-pre-wrap leading-relaxed">
+          <div className="p-4 md:p-6">
+            <pre className="text-sm text-gray-700 font-mono whitespace-pre-wrap leading-relaxed overflow-x-auto">
               {statusText}
             </pre>
           </div>
         </div>
       )}
 
-      {/* Service Health */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
+      <div className="glass rounded-2xl overflow-hidden mb-6">
+        <div className="px-5 md:px-6 py-4 border-b border-white/20">
           <h2 className="font-semibold text-gray-900">Service Health</h2>
         </div>
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-white/20">
           {Object.values(services).map((service) => (
-            <div key={service.name} className="px-6 py-4 flex items-center justify-between">
+            <div key={service.name} className="px-5 md:px-6 py-4 flex items-center justify-between min-h-[52px]">
               <span className="text-sm text-gray-700">{service.name}</span>
               <div className="flex items-center gap-2">
                 {service.status === 'healthy' ? (
-                  <>
-                    <CheckCircle size={16} className="text-green-500" />
-                    <span className="text-sm text-green-600">Healthy</span>
-                  </>
+                  <><CheckCircle size={16} className="text-green-500" /><span className="text-sm text-green-600">Healthy</span></>
                 ) : service.status === 'checking' ? (
-                  <>
-                    <RefreshCw size={16} className="text-gray-400 animate-spin" />
-                    <span className="text-sm text-gray-500">Checking...</span>
-                  </>
+                  <><RefreshCw size={16} className="text-gray-400 animate-spin" /><span className="text-sm text-gray-500">Checking...</span></>
                 ) : (
-                  <>
-                    <XCircle size={16} className="text-red-500" />
-                    <span className="text-sm text-red-600">Unhealthy</span>
-                  </>
+                  <><XCircle size={16} className="text-red-500" /><span className="text-sm text-red-600">Unhealthy</span></>
                 )}
               </div>
             </div>
           ))}
-          {/* Channel info */}
           {sessionData?.channel && (
-            <div className="px-6 py-4 flex items-center justify-between">
+            <div className="px-5 md:px-6 py-4 flex items-center justify-between min-h-[52px]">
               <span className="text-sm text-gray-700">Active Channel</span>
               <div className="flex items-center gap-2">
                 <MessageSquare size={16} className="text-blue-500" />
@@ -291,14 +220,13 @@ function Status() {
         </div>
       </div>
 
-      {/* Session Details */}
       {sessionData && (
-        <div className="mt-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
+        <div className="glass rounded-2xl overflow-hidden">
+          <div className="px-5 md:px-6 py-4 border-b border-white/20">
             <h2 className="font-semibold text-gray-900">Session Info</h2>
           </div>
-          <div className="p-6">
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-4 md:p-6">
+            <dl className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
               {[
                 ['Session Key', sessionData.key || parsedStatus.session],
                 ['Model', sessionData.model],
@@ -307,7 +235,7 @@ function Status() {
                 ['Total Tokens', formatTokens(sessionData.totalTokens)],
                 ['Last Updated', sessionData.updatedAt ? new Date(sessionData.updatedAt).toLocaleString() : '—'],
               ].filter(([,v]) => v).map(([label, value]) => (
-                <div key={label} className="flex justify-between py-2 border-b border-gray-100">
+                <div key={label} className="flex justify-between py-2 border-b border-white/20">
                   <dt className="text-sm text-gray-500">{label}</dt>
                   <dd className="text-sm font-medium text-gray-900 text-right">{value}</dd>
                 </div>

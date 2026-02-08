@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
-import { Files, Clock, Settings, Activity, MessageSquare, Wrench, LogOut } from 'lucide-react'
+import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { Files, Clock, Settings, Activity, MessageSquare, Wrench, LogOut, Menu, X } from 'lucide-react'
 import FileBrowser from './pages/FileBrowser'
 import CronJobs from './pages/CronJobs'
 import Sessions from './pages/Sessions'
@@ -8,16 +8,19 @@ import Status from './pages/Status'
 import SettingsPage from './pages/Settings'
 import { useAuth } from './useAuth'
 import { signInWithGoogle, logOut } from './firebase'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const NAV_ITEMS = [
   { to: '/', icon: Files, label: 'Files' },
-  { to: '/cron', icon: Clock, label: 'Cron Jobs' },
-  { to: '/sessions', icon: MessageSquare, label: 'Sessions' },
+  { to: '/cron', icon: Clock, label: 'Cron' },
+  { to: '/sessions', icon: MessageSquare, label: 'Chat' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
   { to: '/status', icon: Activity, label: 'Status' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
+
+// Bottom 5 items for mobile nav (skip settings, access via status page or swipe)
+const MOBILE_NAV = NAV_ITEMS.slice(0, 5)
 
 function LoginScreen() {
   const [error, setError] = useState(null)
@@ -36,25 +39,23 @@ function LoginScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 safe-top safe-bottom">
       <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-10">
           <img 
             src="/logo.png" 
             alt="RhinoBoy" 
-            className="w-20 h-20 mx-auto mb-4 object-contain"
+            className="w-24 h-24 mx-auto mb-6 object-contain drop-shadow-2xl"
           />
-          <h1 className="text-2xl font-semibold text-gray-900">RhinoBoy</h1>
-          <p className="text-gray-500 mt-1">Dashboard</p>
+          <h1 className="text-3xl font-semibold text-gray-900 tracking-tight">RhinoBoy</h1>
+          <p className="text-gray-500 mt-2 text-sm">Dashboard</p>
         </div>
 
-        {/* Login card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+        <div className="glass rounded-3xl p-8 shadow-2xl">
           <button
             onClick={handleLogin}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            className="w-full flex items-center justify-center gap-3 px-4 py-3.5 bg-gray-900/90 text-white font-medium rounded-xl hover:bg-gray-800 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 transition-all shadow-lg min-h-[52px]"
           >
             <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -66,7 +67,7 @@ function LoginScreen() {
           </button>
 
           {error && (
-            <div className="mt-4 p-3 bg-red-50 text-red-700 text-sm rounded-xl border border-red-100 text-center">
+            <div className="mt-4 p-3 bg-red-50/80 text-red-700 text-sm rounded-xl border border-red-100/50 text-center">
               {error}
             </div>
           )}
@@ -80,17 +81,12 @@ function LoginScreen() {
   )
 }
 
-function Sidebar({ user }) {
+function DesktopSidebar({ user }) {
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
-      {/* Logo */}
-      <div className="p-6 border-b border-gray-100">
+    <aside className="hidden lg:flex w-64 glass-strong rounded-2xl m-3 flex-col flex-shrink-0">
+      <div className="p-6 border-b border-white/20">
         <div className="flex items-center gap-3">
-          <img 
-            src="/logo.png" 
-            alt="RhinoBoy" 
-            className="w-10 h-10 object-contain"
-          />
+          <img src="/logo.png" alt="RhinoBoy" className="w-10 h-10 object-contain" />
           <div>
             <h1 className="font-semibold text-gray-900">RhinoBoy</h1>
             <p className="text-xs text-gray-500">Dashboard</p>
@@ -98,18 +94,18 @@ function Sidebar({ user }) {
         </div>
       </div>
       
-      {/* Navigation */}
       <nav className="flex-1 p-4">
         <ul className="space-y-1">
           {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
             <li key={to}>
               <NavLink
                 to={to}
+                end={to === '/'}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     isActive
-                      ? 'bg-gray-100 text-gray-900'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      ? 'bg-gray-900/10 text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:bg-white/50 hover:text-gray-900'
                   }`
                 }
               >
@@ -121,8 +117,7 @@ function Sidebar({ user }) {
         </ul>
       </nav>
       
-      {/* User / Logout */}
-      <div className="p-4 border-t border-gray-100">
+      <div className="p-4 border-t border-white/20">
         <div className="flex items-center gap-3">
           {user?.photoURL ? (
             <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full" />
@@ -137,7 +132,7 @@ function Sidebar({ user }) {
           </div>
           <button
             onClick={logOut}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
             title="Sign out"
           >
             <LogOut size={16} />
@@ -148,12 +143,114 @@ function Sidebar({ user }) {
   )
 }
 
+function TabletSidebar({ user }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <aside 
+      className={`hidden md:flex lg:hidden flex-col glass-strong m-3 rounded-2xl flex-shrink-0 transition-all duration-300 ${
+        expanded ? 'w-64' : 'w-[64px]'
+      }`}
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+    >
+      <div className="p-3 border-b border-white/20 flex items-center justify-center">
+        <img src="/logo.png" alt="RhinoBoy" className="w-9 h-9 object-contain" />
+        {expanded && (
+          <div className="ml-3 overflow-hidden">
+            <h1 className="font-semibold text-gray-900 text-sm whitespace-nowrap">RhinoBoy</h1>
+          </div>
+        )}
+      </div>
+      
+      <nav className="flex-1 p-2">
+        <ul className="space-y-1">
+          {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
+            <li key={to}>
+              <NavLink
+                to={to}
+                end={to === '/'}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all min-h-[44px] ${
+                    isActive
+                      ? 'bg-gray-900/10 text-gray-900'
+                      : 'text-gray-600 hover:bg-white/50 hover:text-gray-900'
+                  } ${expanded ? '' : 'justify-center'}`
+                }
+              >
+                <Icon size={20} />
+                {expanded && <span className="whitespace-nowrap">{label}</span>}
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="p-2 border-t border-white/20">
+        <button
+          onClick={logOut}
+          className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-gray-500 hover:bg-white/50 hover:text-gray-700 transition-colors min-h-[44px] ${expanded ? '' : 'justify-center'}`}
+          title="Sign out"
+        >
+          <LogOut size={18} />
+          {expanded && <span className="whitespace-nowrap">Sign out</span>}
+        </button>
+      </div>
+    </aside>
+  )
+}
+
+function MobileBottomNav() {
+  const location = useLocation()
+
+  return (
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 glass-strong safe-bottom border-t border-white/30">
+      <div className="flex items-center justify-around px-2 py-1">
+        {MOBILE_NAV.map(({ to, icon: Icon, label }) => {
+          const isActive = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] px-2 py-1 rounded-xl transition-all ${
+                isActive 
+                  ? 'text-gray-900' 
+                  : 'text-gray-400'
+              }`}
+            >
+              <Icon size={22} strokeWidth={isActive ? 2.5 : 1.5} />
+              {isActive && (
+                <span className="text-[10px] font-semibold mt-0.5">{label}</span>
+              )}
+            </NavLink>
+          )
+        })}
+        {/* Settings in mobile nav */}
+        <NavLink
+          to="/settings"
+          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] px-2 py-1 rounded-xl transition-all ${
+            location.pathname === '/settings' ? 'text-gray-900' : 'text-gray-400'
+          }`}
+        >
+          <Settings size={22} strokeWidth={location.pathname === '/settings' ? 2.5 : 1.5} />
+          {location.pathname === '/settings' && (
+            <span className="text-[10px] font-semibold mt-0.5">Settings</span>
+          )}
+        </NavLink>
+      </div>
+    </nav>
+  )
+}
+
+const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
 function App() {
   const { user, loading } = useAuth()
+  const authenticated = IS_LOCAL || !!user
 
-  if (loading) {
+  if (!IS_LOCAL && loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <img src="/logo.png" alt="RhinoBoy" className="w-16 h-16 mx-auto mb-4 object-contain animate-pulse" />
           <p className="text-gray-400 text-sm">Loading...</p>
@@ -162,24 +259,28 @@ function App() {
     )
   }
 
-  if (!user) {
+  if (!authenticated) {
     return <LoginScreen />
   }
 
   return (
     <BrowserRouter>
-      <div className="flex h-screen bg-gray-50">
-        <Sidebar user={user} />
-        <main className="flex-1 overflow-auto">
-          <Routes>
-            <Route path="/" element={<FileBrowser />} />
-            <Route path="/cron" element={<CronJobs />} />
-            <Route path="/sessions" element={<Sessions />} />
-            <Route path="/tools" element={<Tools />} />
-            <Route path="/status" element={<Status />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Routes>
+      <div className="flex h-screen">
+        <DesktopSidebar user={user} />
+        <TabletSidebar user={user} />
+        <main className="flex-1 overflow-auto pb-20 md:pb-0 md:m-3 md:ml-0">
+          <div className="h-full">
+            <Routes>
+              <Route path="/" element={<FileBrowser />} />
+              <Route path="/cron" element={<CronJobs />} />
+              <Route path="/sessions" element={<Sessions />} />
+              <Route path="/tools" element={<Tools />} />
+              <Route path="/status" element={<Status />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Routes>
+          </div>
         </main>
+        <MobileBottomNav />
       </div>
     </BrowserRouter>
   )
