@@ -13,7 +13,17 @@ const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:18789';
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN || '5bc6c24c99d131366bf6f3b2a71a0c68ba407fada0b5cf10';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-app.use(cors());
+// CORS - allow Firebase Hosting and localhost
+app.use(cors({
+  origin: [
+    'https://rhinoboybot-bashboard.web.app',
+    'https://rhinoboybot-bashboard.firebaseapp.com',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://100.82.83.86:3001'
+  ],
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 
 // In production, serve static files from dist/
@@ -264,6 +274,170 @@ app.post('/api/tools/usage/track', (req, res) => {
     }
     writeFileSync(USAGE_FILE, JSON.stringify(usage, null, 2), 'utf-8');
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Skills API
+app.get('/api/skills/list', (req, res) => {
+  try {
+    const skillsDir = join(WORKSPACE, 'skills');
+    if (!existsSync(skillsDir)) {
+      return res.json({ skills: [] });
+    }
+    
+    const skills = [];
+    const dirs = readdirSync(skillsDir);
+    
+    for (const dir of dirs) {
+      const skillPath = join(skillsDir, dir);
+      const stat = statSync(skillPath);
+      if (!stat.isDirectory()) continue;
+      
+      const skillMdPath = join(skillPath, 'SKILL.md');
+      let description = 'No description available';
+      let triggers = [];
+      let category = 'utility';
+      
+      if (existsSync(skillMdPath)) {
+        const content = readFileSync(skillMdPath, 'utf-8');
+        // Extract description from first paragraph or heading
+        const descMatch = content.match(/(?:^|\n)(?:#[^\n]+\n+)?([^\n#]+)/);
+        if (descMatch) {
+          description = descMatch[1].trim().substring(0, 200);
+        }
+        
+        // Extract triggers
+        const triggersMatch = content.match(/(?:triggers?|keywords?|usage):\s*([^\n]+)/i);
+        if (triggersMatch) {
+          triggers = triggersMatch[1].split(/[,;]/).map(t => t.trim()).filter(Boolean);
+        }
+        
+        // Detect category from content
+        if (content.match(/security|audit|firewall/i)) category = 'security';
+        else if (content.match(/design|ui|ux|interface/i)) category = 'design';
+        else if (content.match(/deploy|build|infrastructure/i)) category = 'infrastructure';
+        else if (content.match(/cron|schedule|automat/i)) category = 'automation';
+      }
+      
+      skills.push({
+        name: dir,
+        location: `skills/${dir}`,
+        description,
+        triggers,
+        category,
+        status: existsSync(skillMdPath) ? 'active' : 'inactive',
+        lastModified: stat.mtime,
+        icon: getSkillIcon(dir)
+      });
+    }
+    
+    res.json({ skills });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function getSkillIcon(skillName) {
+  const icons = {
+    'culture-radar': '📡',
+    'prd-designer': '📋',
+    'healthcheck': '🔒',
+    'weather': '🌤️',
+    'firebase-deploy': '🔥',
+    'cloudflare-browser': '☁️',
+    'liquid-glass': '💎',
+    'firebase-security-infrastructure': '🛡️'
+  };
+  return icons[skillName] || '⚡';
+}
+
+// Heartbeat API
+const HEARTBEAT_LOG_FILE = join(WORKSPACE, 'memory/heartbeat.log');
+
+app.get('/api/heartbeat/logs', (req, res) => {
+  try {
+    if (!existsSync(HEARTBEAT_LOG_FILE)) {
+      return res.json({ logs: [], lastRun: null });
+    }
+    
+    const content = readFileSync(HEARTBEAT_LOG_FILE, 'utf-8');
+    const lines = content.split('\n').filter(Boolean).reverse().slice(0, 50);
+    
+    const logs = lines.map(line => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        const match = line.match(/(\d{4}-\d{2}-\d{2}T[\d:]+Z?)\s+(SUCCESS|ERROR|INFO):\s+(.+)/);
+        if (match) {
+          return {
+            timestamp: match[1],
+            status: match[2].toLowerCase(),
+            message: match[3],
+            action: 'Heartbeat'
+          };
+        }
+        return { timestamp: new Date().toISOString(), status: 'info', message: line };
+      }
+    });
+    
+    const lastRun = logs.length > 0 ? logs[0].timestamp : null;
+    res.json({ logs, lastRun });
+  } catch (err) {
+    res.json({ logs: [], lastRun: null });
+  }
+});
+
+app.get('/api/heartbeat/stats', (req, res) => {
+  try {
+    if (!existsSync(HEARTBEAT_LOG_FILE)) {
+      return res.json({ successCount: 0, errorCount: 0, avgDuration: 0 });
+    }
+    
+    const content = readFileSync(HEARTBEAT_LOG_FILE, 'utf-8');
+    const lines = content.split('\n').filter(Boolean);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    let totalDuration = 0;
+    let durationCount = 0;
+    
+    for (const line of lines) {
+      if (line.includes('SUCCESS')) successCount++;
+      if (line.includes('ERROR')) errorCount++;
+      
+      const durationMatch = line.match(/duration:\s*(\d+\.?\d*)/i);
+      if (durationMatch) {
+        totalDuration += parseFloat(durationMatch[1]);
+        durationCount++;
+      }
+    }
+    
+    const avgDuration = durationCount > 0 ? (totalDuration / durationCount).toFixed(2) : 0;
+    
+    res.json({ successCount, errorCount, avgDuration });
+  } catch (err) {
+    res.json({ successCount: 0, errorCount: 0, avgDuration: 0 });
+  }
+});
+
+app.post('/api/heartbeat/run', async (req, res) => {
+  try {
+    const response = await fetch(`${GATEWAY_URL}/tools/invoke`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        tool: 'cron',
+        args: { action: 'wake', text: 'Manual heartbeat check', mode: 'now' }
+      })
+    });
+    
+    const data = await response.json();
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

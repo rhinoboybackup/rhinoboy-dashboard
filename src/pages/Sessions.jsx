@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { MessageSquare, RefreshCw, Send, User, Bot, Clock, Zap, ChevronRight, ArrowLeft } from 'lucide-react'
+import { TypingIndicator } from '../components/TypingIndicator'
 
 function MessageContent({ content }) {
   if (!content) return null
@@ -147,8 +148,10 @@ function Sessions() {
   const [error, setError] = useState(null)
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
+  const [waitingForResponse, setWaitingForResponse] = useState(false)
   const [showChat, setShowChat] = useState(false) // mobile: show chat view
   const messagesEndRef = useRef(null)
+  const pollingIntervalRef = useRef(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -225,21 +228,76 @@ function Sessions() {
 
   const sendMessage = async () => {
     if (!message.trim() || !selectedSession) return
+    
+    const currentHistoryLength = history.length
     setSending(true)
+    setWaitingForResponse(true)
+    
     try {
+      // Send the message
       await fetch('/api/gateway/tools/invoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tool: 'sessions_send', input: { sessionKey: selectedSession.sessionKey, message: message.trim() } })
       })
       setMessage('')
-      setTimeout(() => fetchHistory(selectedSession.sessionKey), 1000)
+      setSending(false)
+      
+      // Poll for response (check every 2s for up to 30s)
+      let attempts = 0
+      const maxAttempts = 15
+      
+      pollingIntervalRef.current = setInterval(async () => {
+        attempts++
+        
+        try {
+          const res = await fetch(`/api/gateway/tools/invoke`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tool: 'sessions_history', input: { sessionKey: selectedSession.sessionKey, limit: 20 } })
+          })
+          const data = await res.json()
+          const messages = (data.result?.messages || []).map(msg => ({
+            role: msg.role,
+            content: typeof msg.content === 'string' 
+              ? msg.content 
+              : (msg.content?.find?.(c => c.type === 'text')?.text || ''),
+            timestamp: msg.timestamp
+          })).filter(msg => msg.content && msg.role !== 'system')
+          
+          // Check if we have new messages
+          if (messages.length > currentHistoryLength) {
+            setHistory(messages)
+            setWaitingForResponse(false)
+            clearInterval(pollingIntervalRef.current)
+            setTimeout(scrollToBottom, 100)
+          }
+        } catch (err) {
+          console.error('Polling error:', err)
+        }
+        
+        // Stop polling after max attempts
+        if (attempts >= maxAttempts) {
+          setWaitingForResponse(false)
+          clearInterval(pollingIntervalRef.current)
+        }
+      }, 2000)
+      
     } catch (err) {
       setError(err.message)
-    } finally {
       setSending(false)
+      setWaitingForResponse(false)
     }
   }
+  
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+      }
+    }
+  }, [])
 
   const formatTime = (ts) => {
     if (!ts) return ''
@@ -366,6 +424,10 @@ function Sessions() {
                       </div>
                     </div>
                   ))}
+                  
+                  {/* Show typing indicator while waiting for response */}
+                  {waitingForResponse && <TypingIndicator />}
+                  
                   <div ref={messagesEndRef} />
                 </div>
               )}

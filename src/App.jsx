@@ -1,9 +1,11 @@
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { Files, Clock, Settings, Activity, MessageSquare, Wrench, LogOut, Menu, X } from 'lucide-react'
+import { Files, Clock, Settings, Activity, MessageSquare, Wrench, LogOut, Menu, X, Zap, Heart } from 'lucide-react'
 import FileBrowser from './pages/FileBrowser'
 import CronJobs from './pages/CronJobs'
 import Sessions from './pages/Sessions'
 import Tools from './pages/Tools'
+import Skills from './pages/Skills'
+import Heartbeat from './pages/Heartbeat'
 import Status from './pages/Status'
 import SettingsPage from './pages/Settings'
 import { useAuth } from './useAuth'
@@ -14,13 +16,21 @@ const NAV_ITEMS = [
   { to: '/', icon: Files, label: 'Files' },
   { to: '/cron', icon: Clock, label: 'Cron' },
   { to: '/sessions', icon: MessageSquare, label: 'Chat' },
+  { to: '/skills', icon: Zap, label: 'Skills' },
   { to: '/tools', icon: Wrench, label: 'Tools' },
+  { to: '/heartbeat', icon: Heart, label: 'Heartbeat' },
   { to: '/status', icon: Activity, label: 'Status' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
-// Bottom 5 items for mobile nav (skip settings, access via status page or swipe)
-const MOBILE_NAV = NAV_ITEMS.slice(0, 5)
+// Bottom nav for mobile (most important 5)
+const MOBILE_NAV = [
+  { to: '/', icon: Files, label: 'Files' },
+  { to: '/sessions', icon: MessageSquare, label: 'Chat' },
+  { to: '/skills', icon: Zap, label: 'Skills' },
+  { to: '/heartbeat', icon: Heart, label: 'Heart' },
+  { to: '/status', icon: Activity, label: 'Status' },
+]
 
 function LoginScreen() {
   const [error, setError] = useState(null)
@@ -242,7 +252,10 @@ function MobileBottomNav() {
   )
 }
 
-const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+const IS_LOCAL = window.location.hostname === 'localhost' || 
+                 window.location.hostname === '127.0.0.1' ||
+                 window.location.hostname.startsWith('100.') || // Tailscale IPs
+                 window.location.hostname.includes('ts.net') // Tailscale hostnames
 
 function App() {
   const { user, loading } = useAuth()
@@ -274,7 +287,9 @@ function App() {
               <Route path="/" element={<FileBrowser />} />
               <Route path="/cron" element={<CronJobs />} />
               <Route path="/sessions" element={<Sessions />} />
+              <Route path="/skills" element={<Skills />} />
               <Route path="/tools" element={<Tools />} />
+              <Route path="/heartbeat" element={<Heartbeat />} />
               <Route path="/status" element={<Status />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Routes>
