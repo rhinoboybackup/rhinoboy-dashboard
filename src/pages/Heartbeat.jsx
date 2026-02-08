@@ -11,6 +11,7 @@ export default function Heartbeat() {
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [lastRun, setLastRun] = useState(null)
+  const [cronSchedule, setCronSchedule] = useState(null)
 
   useEffect(() => {
     fetchHeartbeatData()
@@ -42,6 +43,13 @@ export default function Heartbeat() {
       if (statsRes.ok) {
         const data = await statsRes.json()
         setStats(data)
+      }
+      
+      // Fetch heartbeat cron schedule
+      const cronRes = await fetch('/api/heartbeat/cron')
+      if (cronRes.ok) {
+        const data = await cronRes.json()
+        setCronSchedule(data)
       }
     } catch (err) {
       console.error('Failed to fetch heartbeat data:', err)
@@ -114,15 +122,21 @@ export default function Heartbeat() {
         <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="p-4 bg-white/50 rounded-xl border border-gray-200/50">
             <div className="text-2xl font-bold text-gray-900">
-              {lastRun ? new Date(lastRun).toLocaleTimeString() : '--:--'}
+              {cronSchedule?.nextRun 
+                ? new Date(cronSchedule.nextRun).toLocaleTimeString() 
+                : cronSchedule?.schedule?.everyMs 
+                  ? `${Math.floor(cronSchedule.schedule.everyMs / 60000)}m`
+                  : '--:--'}
             </div>
-            <div className="text-sm text-gray-500 mt-1">Last Run</div>
+            <div className="text-sm text-gray-500 mt-1">
+              {cronSchedule?.nextRun ? 'Next Scheduled' : 'Schedule Interval'}
+            </div>
           </div>
           <div className="p-4 bg-white/50 rounded-xl border border-gray-200/50">
             <div className="text-2xl font-bold text-green-600">
               {stats?.successCount || 0}
             </div>
-            <div className="text-sm text-gray-500 mt-1">Successful</div>
+            <div className="text-sm text-gray-500 mt-1">Successful (HEARTBEAT_OK)</div>
           </div>
           <div className="p-4 bg-white/50 rounded-xl border border-gray-200/50">
             <div className="text-2xl font-bold text-red-600">
@@ -132,9 +146,9 @@ export default function Heartbeat() {
           </div>
           <div className="p-4 bg-white/50 rounded-xl border border-gray-200/50">
             <div className="text-2xl font-bold text-blue-600">
-              {stats?.avgDuration ? `${stats.avgDuration}s` : '--'}
+              {stats?.totalCount || 0}
             </div>
-            <div className="text-sm text-gray-500 mt-1">Avg Duration</div>
+            <div className="text-sm text-gray-500 mt-1">Total Heartbeats</div>
           </div>
         </div>
       </div>

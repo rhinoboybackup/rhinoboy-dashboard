@@ -356,69 +356,153 @@ function getSkillIcon(skillName) {
 // Heartbeat API
 const HEARTBEAT_LOG_FILE = join(WORKSPACE, 'memory/heartbeat.log');
 
-app.get('/api/heartbeat/logs', (req, res) => {
+app.get('/api/heartbeat/logs', async (req, res) => {
   try {
-    if (!existsSync(HEARTBEAT_LOG_FILE)) {
+    // Get session history for main session to find HEARTBEAT responses
+    const historyResponse = await fetch(`${GATEWAY_URL}/tools/invoke`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        tool: 'sessions_history',
+        args: { sessionKey: 'agent:main:main', limit: 50 }
+      })
+    });
+    
+    if (!historyResponse.ok) {
       return res.json({ logs: [], lastRun: null });
     }
     
-    const content = readFileSync(HEARTBEAT_LOG_FILE, 'utf-8');
-    const lines = content.split('\n').filter(Boolean).reverse().slice(0, 50);
+    const historyData = await historyResponse.json();
+    const messages = historyData.result?.messages || [];
     
-    const logs = lines.map(line => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        const match = line.match(/(\d{4}-\d{2}-\d{2}T[\d:]+Z?)\s+(SUCCESS|ERROR|INFO):\s+(.+)/);
-        if (match) {
-          return {
-            timestamp: match[1],
-            status: match[2].toLowerCase(),
-            message: match[3],
-            action: 'Heartbeat'
-          };
-        }
-        return { timestamp: new Date().toISOString(), status: 'info', message: line };
-      }
-    });
+    // Filter for heartbeat-related messages
+    const logs = messages
+      .filter(msg => {
+        const content = typeof msg.content === 'string' 
+          ? msg.content 
+          : msg.content?.find?.(c => c.type === 'text')?.text || '';
+        return content.includes('HEARTBEAT') || content.includes('heartbeat');
+      })
+      .map(msg => {
+        const content = typeof msg.content === 'string' 
+          ? msg.content 
+          : msg.content?.find?.(c => c.type === 'text')?.text || '';
+        
+        const status = content.includes('HEARTBEAT_OK') ? 'success' : 
+                      content.includes('ERROR') ? 'error' : 'info';
+        
+        return {
+          timestamp: msg.timestamp || new Date().toISOString(),
+          status,
+          message: content.slice(0, 200), // Truncate long messages
+          action: 'Heartbeat',
+          role: msg.role
+        };
+      })
+      .slice(0, 20);
     
     const lastRun = logs.length > 0 ? logs[0].timestamp : null;
     res.json({ logs, lastRun });
   } catch (err) {
+    console.error('Heartbeat logs error:', err);
     res.json({ logs: [], lastRun: null });
   }
 });
 
-app.get('/api/heartbeat/stats', (req, res) => {
+app.get('/api/heartbeat/stats', async (req, res) => {
   try {
-    if (!existsSync(HEARTBEAT_LOG_FILE)) {
-      return res.json({ successCount: 0, errorCount: 0, avgDuration: 0 });
+    // Get session history for main session to calculate real stats
+    const historyResponse = await fetch(`${GATEWAY_URL}/tools/invoke`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        tool: 'sessions_history',
+        args: { sessionKey: 'agent:main:main', limit: 100 }
+      })
+    });
+    
+    if (!historyResponse.ok) {
+      return res.json({ successCount: 0, errorCount: 0, totalCount: 0 });
     }
     
-    const content = readFileSync(HEARTBEAT_LOG_FILE, 'utf-8');
-    const lines = content.split('\n').filter(Boolean);
+    const historyData = await historyResponse.json();
+    const messages = historyData.result?.messages || [];
     
+    // Count HEARTBEAT_OK vs errors
     let successCount = 0;
     let errorCount = 0;
-    let totalDuration = 0;
-    let durationCount = 0;
+    let totalCount = 0;
     
-    for (const line of lines) {
-      if (line.includes('SUCCESS')) successCount++;
-      if (line.includes('ERROR')) errorCount++;
+    for (const msg of messages) {
+      const content = typeof msg.content === 'string' 
+        ? msg.content 
+        : msg.content?.find?.(c => c.type === 'text')?.text || '';
       
-      const durationMatch = line.match(/duration:\s*(\d+\.?\d*)/i);
-      if (durationMatch) {
-        totalDuration += parseFloat(durationMatch[1]);
-        durationCount++;
+      if (content.includes('HEARTBEAT')) {
+        totalCount++;
+        if (content.includes('HEARTBEAT_OK')) {
+          successCount++;
+        } else if (content.includes('ERROR') || content.includes('error')) {
+          errorCount++;
+        }
       }
     }
     
-    const avgDuration = durationCount > 0 ? (totalDuration / durationCount).toFixed(2) : 0;
-    
-    res.json({ successCount, errorCount, avgDuration });
+    res.json({ successCount, errorCount, totalCount });
   } catch (err) {
-    res.json({ successCount: 0, errorCount: 0, avgDuration: 0 });
+    console.error('Heartbeat stats error:', err);
+    res.json({ successCount: 0, errorCount: 0, totalCount: 0 });
+  }
+});
+
+app.get('/api/heartbeat/cron', async (req, res) => {
+  try {
+    // Get cron jobs to find heartbeat schedule
+    const response = await fetch(`${GATEWAY_URL}/tools/invoke`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        tool: 'cron',
+        args: { action: 'list' }
+      })
+    });
+    
+    if (!response.ok) {
+      return res.json({ schedule: null, nextRun: null });
+    }
+    
+    const data = await response.json();
+    const jobs = data.result?.jobs || [];
+    
+    // Find heartbeat-related job (usually the main session with systemEvent payload)
+    const heartbeatJob = jobs.find(job => 
+      job.sessionTarget === 'main' || 
+      job.payload?.text?.includes('HEARTBEAT') ||
+      job.payload?.text?.includes('heartbeat')
+    );
+    
+    if (heartbeatJob) {
+      res.json({
+        schedule: heartbeatJob.schedule,
+        nextRun: heartbeatJob.nextRun,
+        lastRun: heartbeatJob.lastRun,
+        enabled: heartbeatJob.enabled
+      });
+    } else {
+      res.json({ schedule: null, nextRun: null });
+    }
+  } catch (err) {
+    console.error('Heartbeat cron error:', err);
+    res.json({ schedule: null, nextRun: null });
   }
 });
 
